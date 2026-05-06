@@ -29,12 +29,13 @@ see "PDF", and so on.
 - **Simple.** Two clicks and a save dialog. That's it.
 - **Lightweight.** Single Windows app, no browser tab, no installer.
 
-## Screenshot
+## Screenshots
 
-<!-- TODO: add a screenshot of the app window here -->
-<!-- Drop an image into a `docs/` folder and reference it like:    -->
-<!-- ![App window](docs/screenshot.png)                            -->
-![File Converter app window](docs/screenshot.png)
+![File Converter — main window](docs/Screenshot-main.png)
+
+![Conversion in progress](docs/Screenshot-converting.png)
+
+![Conversion completed](docs/Screenshot-completed.png)
 
 ## Install
 
