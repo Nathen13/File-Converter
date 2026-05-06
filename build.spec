@@ -2,24 +2,36 @@
 # Build with:  pyinstaller build.spec
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
 block_cipher = None
+
+# pymupdf ships with non-Python resource files (YAML configs, ONNX models
+# for layout detection) that PyInstaller's static analysis misses. We
+# collect them explicitly so they end up next to the frozen Python code.
+datas = []
+datas += collect_data_files('pymupdf')
+datas += collect_data_files('pymupdf4llm')
+
+# Same idea for hidden imports - libraries that get loaded dynamically
+# at runtime won't be detected by static analysis.
+hiddenimports = [
+    'pymupdf4llm',
+    'pymupdf',
+    'docx2pdf',
+    'win32com',
+    'win32com.client',
+    'pythoncom',
+]
+hiddenimports += collect_submodules('pymupdf')
+
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    # These libraries do dynamic imports that PyInstaller's static
-    # analysis can miss. Listing them explicitly prevents
-    # ModuleNotFoundError at runtime in the frozen .exe.
-    hiddenimports=[
-        'pymupdf4llm',
-        'pymupdf',
-        'docx2pdf',
-        'win32com',
-        'win32com.client',
-        'pythoncom',
-    ],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
