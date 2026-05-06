@@ -35,7 +35,7 @@ see "PDF", and so on.
 
 ![Conversion in progress](docs/screenshot-converting-v0.2.0.png)
 
-![Conversion completed](docs/Screenshot-completed-v0.2.0.png)
+![Conversion completed](docs/screenshot-completed-v0.2.0.png)
 
 ## Install
 
