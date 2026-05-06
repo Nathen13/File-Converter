@@ -33,7 +33,7 @@ see "PDF", and so on.
 
 ![File Converter — main window](docs/screenshot-main-v0.3.0.png)
 
-![Conversion in progress](docs/screenshot-converting-v0.3.0.png)
+![Conversion in progress](docs/screenshot_converting-v0.3.0.png)
 
 ![Conversion completed](docs/screenshot-completed-v0.3.0.png)
 
