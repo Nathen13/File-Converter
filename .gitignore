@@ -1,0 +1,41 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ===== Virtual environments =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== PyInstaller build artifacts =====
+build/
+dist/
+*.spec.bak
+
+# ===== IDE / editors =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== Windows =====
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ===== macOS (if you ever clone on a Mac) =====
+.DS_Store
+
+# ===== Logs / temp =====
+*.log
+*.tmp
+
+# ===== Test files you might drop in while developing =====
+# Uncomment if you want to keep sample files out of the repo:
+# samples/
+# test_files/

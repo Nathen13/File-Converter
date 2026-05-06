@@ -1,0 +1,4 @@
+PyQt6>=6.6,<7
+pymupdf4llm>=0.0.17
+docx2pdf>=0.1.8
+pyinstaller>=6.0
