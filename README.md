@@ -39,10 +39,13 @@ see "PDF", and so on.
 
 ### Option 1 — Download the .exe (easiest)
 
-<!-- TODO: enable this section once you publish a GitHub Release -->
+1. Go to the [latest release](https://github.com/Nathen13/File-Converter/releases/latest)
+2. Download `FileConverter-v0.1.0-windows.zip`
+3. Extract it anywhere on your computer
+4. Double-click `FileConverter.exe` to launch
 
-Releases aren't published yet. For now, follow Option 2 below to build it
-yourself — it takes about five minutes.
+Windows may show a SmartScreen warning the first time — click "More
+info" → "Run anyway." This is normal for unsigned apps.
 
 ### Option 2 — Build it yourself
 
