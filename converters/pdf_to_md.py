@@ -55,7 +55,20 @@ class PdfToMarkdownConverter(BaseConverter):
                     if progress_callback is not None:
                         progress_callback(page_index + 1, total_pages)
 
-                output_path.write_text("\n\n".join(chunks), encoding="utf-8")
+                combined = "\n\n".join(chunks)
+
+                # If extraction produced nothing meaningful, the PDF likely
+                # has no extractable text -- e.g. a scanned image-only PDF
+                # without OCR, or a genuinely blank document. Surface this
+                # as an error rather than silently writing an empty file.
+                if not combined.strip():
+                    raise ConversionError(
+                        "No text could be extracted from this PDF. It may be "
+                        "blank, image-only (scanned without OCR), or "
+                        "encrypted. Nothing was saved."
+                    )
+
+                output_path.write_text(combined, encoding="utf-8")
             finally:
                 doc.close()
         except ConversionError:

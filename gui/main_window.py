@@ -73,9 +73,11 @@ class ConversionWorker(QThread):
 
 
 def _format_duration(seconds: float) -> str:
-    """Format a duration as M:SS or H:MM:SS."""
+    """Format duration: 0.4s, 12.3s, M:SS, or H:MM:SS."""
     if seconds < 0:
         seconds = 0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
     total = int(seconds)
     hours, remainder = divmod(total, 3600)
     minutes, secs = divmod(remainder, 60)
