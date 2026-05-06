@@ -1,8 +1,9 @@
 """TXT -> HTML. Wraps text in a styled, escaped HTML document."""
 import html
 from pathlib import Path
+from typing import Optional
 
-from .base import BaseConverter, ConversionError
+from .base import BaseConverter, ConversionError, ProgressCallback
 
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -40,11 +41,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 class TxtToHtmlConverter(BaseConverter):
     input_ext = "txt"
     output_ext = "html"
+    # Single-step operation; nothing meaningful to report progress on.
+    supports_progress = False
 
-    def convert(self, input_path: Path, output_path: Path) -> None:
+    def convert(
+        self,
+        input_path: Path,
+        output_path: Path,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> None:
+        del progress_callback  # unused
+
         try:
-            # utf-8-sig handles Windows files that include a BOM (common
-            # when saved from Notepad).
             content = input_path.read_text(encoding="utf-8-sig")
             doc = HTML_TEMPLATE.format(
                 title=html.escape(input_path.stem),

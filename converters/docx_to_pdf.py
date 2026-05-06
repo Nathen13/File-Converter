@@ -1,23 +1,31 @@
 """DOCX -> PDF using docx2pdf.
 
 On Windows this drives Microsoft Word via COM automation. Requires Word
-to be installed. We chose this over Pandoc+LaTeX (huge dependency) and
-LibreOffice headless (heavyweight, slow startup) because most Windows
-users targeted by this app already have Office installed, and Word's
-rendering of DOCX is the de-facto reference.
+to be installed.
 """
 from pathlib import Path
+from typing import Optional
 
-from .base import BaseConverter, ConversionError
+from .base import BaseConverter, ConversionError, ProgressCallback
 
 
 class DocxToPdfConverter(BaseConverter):
     input_ext = "docx"
     output_ext = "pdf"
+    # Word's COM API doesn't expose progress, so we can't report it.
+    supports_progress = False
 
-    def convert(self, input_path: Path, output_path: Path) -> None:
+    def convert(
+        self,
+        input_path: Path,
+        output_path: Path,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> None:
+        # progress_callback is unused -- Word doesn't tell us how far along
+        # it is, so the GUI will show indeterminate progress instead.
+        del progress_callback
+
         try:
-            # Lazy import: pulls in pywin32/COM bindings only on first use.
             from docx2pdf import convert as docx2pdf_convert
 
             docx2pdf_convert(str(input_path), str(output_path))
