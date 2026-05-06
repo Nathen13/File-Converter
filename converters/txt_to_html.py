@@ -3,7 +3,12 @@ import html
 from pathlib import Path
 from typing import Optional
 
-from .base import BaseConverter, ConversionError, ProgressCallback
+from .base import (
+    BaseConverter,
+    CancelCheck,
+    ConversionError,
+    ProgressCallback,
+)
 
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -41,16 +46,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 class TxtToHtmlConverter(BaseConverter):
     input_ext = "txt"
     output_ext = "html"
-    # Single-step operation; nothing meaningful to report progress on.
+    # Single-step operation, sub-second runtime; nothing meaningful
+    # to cancel.
     supports_progress = False
+    supports_cancel = False
 
     def convert(
         self,
         input_path: Path,
         output_path: Path,
         progress_callback: Optional[ProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
-        del progress_callback  # unused
+        del progress_callback, cancel_check  # unused for this converter
 
         try:
             content = input_path.read_text(encoding="utf-8-sig")

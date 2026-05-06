@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from converters.base import BaseConverter
+from converters.base import BaseConverter, ConversionCancelled
 from converters.registry import (
     CONVERTERS,
     get_converter,
@@ -436,6 +436,7 @@ class ConversionWorker(QThread):
     progress = pyqtSignal(int, int)
     finished_ok = pyqtSignal(str)
     finished_err = pyqtSignal(str)
+    finished_cancelled = pyqtSignal()  # emitted when user cancelled
 
     def __init__(
         self,
@@ -447,9 +448,36 @@ class ConversionWorker(QThread):
         self._converter = converter
         self._input_path = input_path
         self._output_path = output_path
+        # Cancellation flag, flipped by cancel() (called from UI thread).
+        # _is_cancel_requested is read by _check_cancel from the worker
+        # thread. Python's GIL makes a single bool read/write atomic, so
+        # we don't need a Lock here.
+        self._is_cancel_requested: bool = False
+
+    def cancel(self) -> None:
+        """Request cancellation. Called from the UI thread."""
+        self._is_cancel_requested = True
 
     def _on_progress(self, current: int, total: int) -> None:
         self.progress.emit(current, total)
+
+    def _check_cancel(self) -> bool:
+        return self._is_cancel_requested
+
+    def _cleanup_partial_output(self) -> None:
+        """Delete the output file if conversion didn't complete.
+
+        Called when the user cancels mid-conversion. A half-extracted
+        markdown file is generally useless; cleaner to start fresh.
+        """
+        try:
+            if self._output_path.exists():
+                self._output_path.unlink()
+        except OSError:
+            # If we can't delete it, that's not great but not worth
+            # surfacing to the user -- they cancelled, the operation
+            # is over from their perspective.
+            pass
 
     def run(self) -> None:
         try:
@@ -457,8 +485,12 @@ class ConversionWorker(QThread):
                 self._input_path,
                 self._output_path,
                 progress_callback=self._on_progress,
+                cancel_check=self._check_cancel,
             )
             self.finished_ok.emit(str(self._output_path))
+        except ConversionCancelled:
+            self._cleanup_partial_output()
+            self.finished_cancelled.emit()
         except Exception as e:
             self.finished_err.emit(str(e))
 
@@ -505,11 +537,40 @@ class MainWindow(QMainWindow):
         format_row.addWidget(self.format_combo, stretch=1)
         layout.addLayout(format_row)
 
+        # Convert + Cancel buttons in a row. Cancel only appears
+        # for converters that support it, and only while a conversion
+        # is running.
+        action_row = QHBoxLayout()
         self.convert_btn = QPushButton("Convert")
         self.convert_btn.setEnabled(False)
         self.convert_btn.setMinimumHeight(36)
         self.convert_btn.clicked.connect(self._on_convert)
-        layout.addWidget(self.convert_btn)
+        action_row.addWidget(self.convert_btn, stretch=1)
+
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setMinimumHeight(36)
+        self.cancel_btn.setStyleSheet(
+            "QPushButton { "
+            "  background-color: #334155; "
+            "  border: 1px solid #64748b; "
+            "  color: #e2e8f0; "
+            "  font-weight: 500; "
+            "  padding: 6px 16px; "
+            "  border-radius: 6px;"
+            "} "
+            "QPushButton:hover { "
+            "  background-color: #dc2626; "
+            "  border: 1px solid #ef4444; "
+            "  color: #ffffff; "
+            "} "
+            "QPushButton:pressed { "
+            "  background-color: #b91c1c; "
+            "}"
+        )
+        self.cancel_btn.clicked.connect(self._on_cancel)
+        self.cancel_btn.setVisible(False)
+        action_row.addWidget(self.cancel_btn)
+        layout.addLayout(action_row)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -614,6 +675,15 @@ class MainWindow(QMainWindow):
         self.convert_btn.setEnabled(False)
         self.format_combo.setEnabled(False)
 
+        # Show the Cancel button only for converters that can actually
+        # honor a cancel request. Showing a non-functional button would
+        # mislead the user into thinking they could stop something they
+        # can't.
+        if converter.supports_cancel:
+            self.cancel_btn.setVisible(True)
+            self.cancel_btn.setEnabled(True)
+            self.cancel_btn.setText("Cancel")
+
         self.progress_bar.setVisible(True)
         self.elapsed_label.setVisible(True)
         self.eta_label.setVisible(True)
@@ -637,7 +707,24 @@ class MainWindow(QMainWindow):
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_conversion_ok)
         self._worker.finished_err.connect(self._on_conversion_err)
+        self._worker.finished_cancelled.connect(self._on_conversion_cancelled)
         self._worker.start()
+
+    def _on_cancel(self) -> None:
+        """Request cancellation of the running conversion.
+
+        The worker checks the cancel flag between pages, so there's a
+        short delay between clicking Cancel and the conversion actually
+        stopping (typically <1 second per page).
+        """
+        if self._worker is None or not self._is_converting:
+            return
+        self._worker.cancel()
+        # Give the user immediate feedback that we heard them, even
+        # though the worker may still be finishing the current page.
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.setText("Cancelling\u2026")
+        self._set_status("Cancelling\u2026", color="#fbbf24")
 
     # ---------- Progress / timer ----------
     def _on_progress(self, current: int, total: int) -> None:
@@ -665,38 +752,49 @@ class MainWindow(QMainWindow):
                 self.eta_label.setText("Finalizing\u2026")
 
     # ---------- Completion handlers ----------
-    def _on_conversion_ok(self, output_path: str) -> None:
+    def _reset_ui_after_conversion(self) -> None:
+        """Common cleanup for all three completion paths: ok, err, cancel."""
         self._stop_timing()
         self._is_converting = False
         self.drop_zone.set_locked(False)
-        self.progress_bar.setValue(100)
         self.progress_bar.setVisible(False)
         self.elapsed_label.setVisible(False)
         self.eta_label.setVisible(False)
+        self.cancel_btn.setVisible(False)
         self.convert_btn.setEnabled(True)
         self.format_combo.setEnabled(True)
 
+    def _on_conversion_ok(self, output_path: str) -> None:
+        self.progress_bar.setValue(100)
         elapsed_str = (
             _format_duration(time.monotonic() - self._start_time)
             if self._start_time
             else "?"
         )
+        self._reset_ui_after_conversion()
         self._set_status(
             f"\u2713 Saved to: {output_path}  (took {elapsed_str})",
             color="#4ade80",
         )
 
     def _on_conversion_err(self, message: str) -> None:
-        self._stop_timing()
-        self._is_converting = False
-        self.drop_zone.set_locked(False)
-        self.progress_bar.setVisible(False)
-        self.elapsed_label.setVisible(False)
-        self.eta_label.setVisible(False)
-        self.convert_btn.setEnabled(True)
-        self.format_combo.setEnabled(True)
+        self._reset_ui_after_conversion()
         self._set_status(f"\u2717 {message}", color="#f87171")
         QMessageBox.critical(self, "Conversion failed", message)
+
+    def _on_conversion_cancelled(self) -> None:
+        """User clicked Cancel and the worker stopped cleanly."""
+        elapsed_str = (
+            _format_duration(time.monotonic() - self._start_time)
+            if self._start_time
+            else "?"
+        )
+        self._reset_ui_after_conversion()
+        self._set_status(
+            f"\u26A0 Conversion cancelled after {elapsed_str}. "
+            "Partial output discarded.",
+            color="#fbbf24",
+        )
 
     def _stop_timing(self) -> None:
         self._elapsed_timer.stop()

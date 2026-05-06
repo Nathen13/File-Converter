@@ -6,24 +6,30 @@ to be installed.
 from pathlib import Path
 from typing import Optional
 
-from .base import BaseConverter, ConversionError, ProgressCallback
+from .base import (
+    BaseConverter,
+    CancelCheck,
+    ConversionError,
+    ProgressCallback,
+)
 
 
 class DocxToPdfConverter(BaseConverter):
     input_ext = "docx"
     output_ext = "pdf"
-    # Word's COM API doesn't expose progress, so we can't report it.
+    # Word's COM call is one indivisible operation -- we can't poll
+    # for cancellation while it's blocked inside Word.
     supports_progress = False
+    supports_cancel = False
 
     def convert(
         self,
         input_path: Path,
         output_path: Path,
         progress_callback: Optional[ProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
-        # progress_callback is unused -- Word doesn't tell us how far along
-        # it is, so the GUI will show indeterminate progress instead.
-        del progress_callback
+        del progress_callback, cancel_check  # unused for this converter
 
         try:
             from docx2pdf import convert as docx2pdf_convert

@@ -8,12 +8,23 @@ class ConversionError(Exception):
     """Raised when a conversion fails. Wraps the underlying library error."""
 
 
-# Progress callback signature:
-#   callback(current: int, total: int)
-# Where current/total are page counts (or step counts). Converters that
-# can't report fine-grained progress should pass None and the GUI will
-# show indeterminate progress instead.
+class ConversionCancelled(ConversionError):
+    """Raised when the user cancelled mid-conversion.
+
+    Subclasses ConversionError so existing error-handling paths still
+    catch it, but the GUI distinguishes by type to show "Cancelled"
+    rather than an error dialog.
+    """
+
+
+# Progress callback: callback(current: int, total: int)
+# Where current/total are page counts (or step counts).
 ProgressCallback = Callable[[int, int], None]
+
+# Cancel-check callback: returns True if the user has requested cancel.
+# Converters that support cancellation poll this between work units
+# (e.g. between PDF pages) and raise ConversionCancelled when it's True.
+CancelCheck = Callable[[], bool]
 
 
 class BaseConverter(ABC):
@@ -21,19 +32,20 @@ class BaseConverter(ABC):
 
     Subclasses MUST set `input_ext` and `output_ext` (lowercase, no dot)
     and implement `convert`.
-
-    The `progress_callback` parameter is optional. Converters that can
-    report progress (e.g. per-page) should call it as work proceeds.
-    Converters that work in one indivisible step can ignore it.
     """
 
     input_ext: str = ""
     output_ext: str = ""
 
-    # Set this to True in subclasses that call progress_callback.
-    # The GUI uses this hint to choose between determinate (real %) and
-    # indeterminate (spinner) progress display upfront.
+    # True if the converter calls progress_callback as it works.
+    # The GUI uses this to pick determinate vs indeterminate progress.
     supports_progress: bool = False
+
+    # True if the converter polls cancel_check and can stop cleanly
+    # mid-work. The GUI uses this to decide whether to show the
+    # Cancel button -- showing it for non-cancellable conversions
+    # would be misleading.
+    supports_cancel: bool = False
 
     @abstractmethod
     def convert(
@@ -41,12 +53,13 @@ class BaseConverter(ABC):
         input_path: Path,
         output_path: Path,
         progress_callback: Optional[ProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
         """Convert input_path to output_path.
 
-        Raise ConversionError on failure. Call progress_callback (if
-        provided and if the converter supports it) with (current, total)
-        as work proceeds.
+        Raise ConversionError on failure. Raise ConversionCancelled if
+        cancel_check returns True at a checkpoint. Call progress_callback
+        (if provided) with (current, total) as work proceeds.
         """
 
     @property
