@@ -2,19 +2,26 @@
 # Build with:  pyinstaller build.spec
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-# pymupdf ships with non-Python resource files (YAML configs, ONNX models
-# for layout detection) that PyInstaller's static analysis misses. We
-# collect them explicitly so they end up next to the frozen Python code.
+# Bundle pymupdf's data files (yaml configs, ONNX models for layout
+# detection) so they're available at runtime in the frozen .exe.
 datas = []
 datas += collect_data_files('pymupdf')
 datas += collect_data_files('pymupdf4llm')
 
-# Same idea for hidden imports - libraries that get loaded dynamically
-# at runtime won't be detected by static analysis.
+# Bundle the assets folder (app icon, etc.) into the .exe. The
+# (source, dest) tuple says "copy ./assets into the bundle at the
+# 'assets' subdirectory."
+if os.path.isdir('assets'):
+    datas.append(('assets', 'assets'))
+
+# Hidden imports for libraries that get loaded dynamically and aren't
+# detected by static analysis.
 hiddenimports = [
     'pymupdf4llm',
     'pymupdf',
@@ -24,6 +31,11 @@ hiddenimports = [
     'pythoncom',
 ]
 hiddenimports += collect_submodules('pymupdf')
+
+# Path to the .exe icon. PyInstaller embeds this so the file shows
+# the right icon in File Explorer and the Start menu, separate from
+# the runtime QApplication.setWindowIcon() call.
+icon_path = 'assets/icon.ico' if os.path.exists('assets/icon.ico') else None
 
 
 a = Analysis(
@@ -58,11 +70,11 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,        # GUI app -> no console window
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='app.ico',     # uncomment when you add an icon
+    icon=icon_path,
 )

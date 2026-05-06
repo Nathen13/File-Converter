@@ -35,6 +35,7 @@ from converters.registry import (
     get_supported_inputs,
     get_supported_outputs,
 )
+from gui import settings
 
 
 # ---------- Stylesheets ----------
@@ -335,9 +336,10 @@ class DropZone(QFrame):
             "Supported (" + " ".join(f"*.{e}" for e in exts) + ");;All Files (*.*)"
         )
         path_str, _ = QFileDialog.getOpenFileName(
-            self, "Select File", "", filter_str
+            self, "Select File", settings.get_last_open_dir(), filter_str
         )
         if path_str:
+            settings.remember_paths_from_open(path_str)
             self.file_chosen.emit(Path(path_str))
 
     # ---------- Drag and drop ----------
@@ -401,6 +403,9 @@ class DropZone(QFrame):
 
         event.acceptProposedAction()
         chosen = paths[0]
+        # Remember where dropped files came from too -- if the user
+        # next opens the picker, it should land in the same folder.
+        settings.remember_paths_from_open(str(chosen))
         self.file_chosen.emit(chosen)
         if len(paths) > 1:
             self.multiple_files_dropped.emit(chosen)
@@ -652,16 +657,25 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", "Converter not found.")
             return
 
+        # Default save location: last folder the user saved to (if any),
+        # with the input file's stem and the new extension. If there's
+        # no saved preference yet, fall back to the same folder as the
+        # input file -- a reasonable default that keeps converted files
+        # next to their source.
+        default_dir = settings.get_last_save_dir() or str(self._input_path.parent)
         default_name = self._input_path.with_suffix(f".{output_ext}").name
+        default_path = str(Path(default_dir) / default_name)
+
         out_str, _ = QFileDialog.getSaveFileName(
             self,
             "Save As",
-            default_name,
+            default_path,
             f"{output_ext.upper()} (*.{output_ext})",
         )
         if not out_str:
             return
 
+        settings.remember_paths_from_save(out_str)
         self._start_conversion(converter, self._input_path, Path(out_str))
 
     def _start_conversion(
