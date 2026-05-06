@@ -39,3 +39,4 @@ $RECYCLE.BIN/
 # Uncomment if you want to keep sample files out of the repo:
 # samples/
 # test_files/
+FileConverter-*.zip
