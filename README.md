@@ -31,18 +31,18 @@ see "PDF", and so on.
 
 ## Screenshots
 
-![File Converter — main window](docs/screenshot-main-v0.3.0.png)
+![File Converter — main window](docs/main-v0.6.0.png)
 
-![Conversion in progress](docs/screenshot-cancel-v0.4.0.png)
+![Conversion in progress](docs/converting-v0.6.0png.png)
 
-![Conversion completed](docs/screenshot-completed-v0.3.0.png)
+![Conversion completed](docs/final-v0.6.0.png)
 
 ## Install
 
 ### Option 1 — Download the .exe (easiest)
 
 1. Go to the [latest release](https://github.com/Nathen13/File-Converter/releases/latest)
-2. Download `FileConverter-v0.1.0-windows.zip`
+2. Download `FileConverter-v0.6.0-windows.zip`
 3. Extract it anywhere on your computer
 4. Double-click `FileConverter.exe` to launch
 
