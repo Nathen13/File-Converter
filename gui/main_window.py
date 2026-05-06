@@ -5,8 +5,12 @@ UI features:
   * Empty state: large dashed-border prompt to drop or click
   * Loaded state: compact strip showing filename + Remove button
 - Real per-page progress for PDF -> Markdown, with elapsed time and ETA.
+- Cancel button for cancellable conversions.
 - Threaded conversion so the UI stays responsive.
+- "Show in Folder" affordance after successful conversion.
 """
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -436,6 +440,43 @@ def _format_size(num_bytes: int) -> str:
     return f"{size:.1f} TB"
 
 
+def _show_in_folder(path: Path) -> None:
+    """Open the OS file manager with `path` selected.
+
+    On Windows, `explorer /select,<path>` opens File Explorer with the
+    file highlighted. The /select argument is finicky:
+      - The path must use backslashes (forward slashes won't highlight)
+      - It must be passed as a single shell-style argument, not a list,
+        because Explorer parses /select,<path> as one combined token
+
+    On macOS / Linux we fall back to opening the parent folder (no
+    universal "select" equivalent).
+    """
+    try:
+        if sys.platform == "win32":
+            # Resolve symlinks and normalize to absolute Windows path
+            # with backslashes -- /select is picky about both.
+            normalized = str(path.resolve()).replace("/", "\\")
+            # shell=False keeps things safer; we hand-build the command
+            # string Explorer wants.
+            subprocess.run(
+                f'explorer /select,"{normalized}"',
+                shell=False,
+                # /select returns nonzero exit code even on success,
+                # so we don't check it.
+                check=False,
+            )
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", str(path)])
+        else:  # Linux and other Unixes
+            subprocess.Popen(["xdg-open", str(path.parent)])
+    except (OSError, subprocess.SubprocessError):
+        # If the OS file manager isn't available for some reason, just
+        # silently fail. Not worth interrupting the user with a dialog
+        # over a convenience feature.
+        pass
+
+
 # ---------- Worker thread ----------
 class ConversionWorker(QThread):
     progress = pyqtSignal(int, int)
@@ -510,6 +551,11 @@ class MainWindow(QMainWindow):
         self._input_path: Optional[Path] = None
         self._worker: Optional[ConversionWorker] = None
         self._is_converting: bool = False
+
+        # Path of the most recent successful conversion output. Used
+        # by the "Show in Folder" button. Reset when a new conversion
+        # starts.
+        self._last_output_path: Optional[Path] = None
 
         self._start_time: Optional[float] = None
         self._last_progress: Optional[tuple[int, int]] = None
@@ -593,9 +639,47 @@ class MainWindow(QMainWindow):
         self.eta_label.setVisible(False)
         layout.addLayout(timing_row)
 
+        # Status label uses rich text so we can put a clickable link
+        # to the output file in success messages. linkActivated fires
+        # when the user clicks any <a href="..."> we put in there.
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
+        self.status_label.setTextFormat(Qt.TextFormat.RichText)
+        self.status_label.setOpenExternalLinks(False)
+        self.status_label.linkActivated.connect(self._on_status_link_clicked)
         layout.addWidget(self.status_label)
+
+        # "Show in Folder" button -- appears under the status line after
+        # a successful conversion, hidden otherwise. Discoverable
+        # complement to the clickable status link above (some users
+        # won't notice the link is clickable).
+        show_folder_row = QHBoxLayout()
+        show_folder_row.addStretch()
+        self.show_folder_btn = QPushButton("\U0001F4C2 Show in Folder")
+        self.show_folder_btn.setObjectName("showFolderBtn")
+        self.show_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.show_folder_btn.setStyleSheet(
+            "QPushButton#showFolderBtn { "
+            "  background-color: #334155; "
+            "  border: 1px solid #64748b; "
+            "  color: #e2e8f0; "
+            "  font-size: 12px; font-weight: 500; "
+            "  padding: 6px 14px; "
+            "  border-radius: 6px;"
+            "} "
+            "QPushButton#showFolderBtn:hover { "
+            "  background-color: #1e3a5f; "
+            "  border: 1px solid #3b82f6; "
+            "  color: #ffffff; "
+            "} "
+            "QPushButton#showFolderBtn:pressed { "
+            "  background-color: #1e293b; "
+            "}"
+        )
+        self.show_folder_btn.clicked.connect(self._on_show_folder_clicked)
+        self.show_folder_btn.setVisible(False)
+        show_folder_row.addWidget(self.show_folder_btn)
+        layout.addLayout(show_folder_row)
 
         supported = ", ".join(c.display_name for c in CONVERTERS)
         hint = QLabel(f"Conversions: {supported}")
@@ -688,6 +772,12 @@ class MainWindow(QMainWindow):
         self.drop_zone.set_locked(True)
         self.convert_btn.setEnabled(False)
         self.format_combo.setEnabled(False)
+
+        # Hide the Show in Folder button from any prior success --
+        # otherwise the user could click it during a new conversion
+        # and open the previous output folder, which is confusing.
+        self.show_folder_btn.setVisible(False)
+        self._last_output_path = None
 
         # Show the Cancel button only for converters that can actually
         # honor a cancel request. Showing a non-functional button would
@@ -786,13 +876,34 @@ class MainWindow(QMainWindow):
             else "?"
         )
         self._reset_ui_after_conversion()
+
+        # Stash the path so the Show in Folder button knows what to open.
+        self._last_output_path = Path(output_path)
+
+        # Status uses HTML so the file path becomes a clickable link.
+        # We use a dummy "show:" scheme in href so linkActivated picks
+        # it up but the OS doesn't try to launch it as a real URL.
+        # The visible color is set via inline style since QLabel rich
+        # text doesn't inherit from the parent stylesheet.
+        import html as html_lib
+        path_html = html_lib.escape(output_path)
         self._set_status(
-            f"\u2713 Saved to: {output_path}  (took {elapsed_str})",
-            color="#4ade80",
+            (
+                f'<span style="color:#4ade80;">\u2713 Saved to: '
+                f'<a href="show:{path_html}" '
+                f'style="color:#4ade80; text-decoration: underline;">'
+                f'{path_html}</a>'
+                f'  (took {elapsed_str})'
+                f'</span>'
+            ),
+            color="",
         )
+        self.show_folder_btn.setVisible(True)
 
     def _on_conversion_err(self, message: str) -> None:
         self._reset_ui_after_conversion()
+        self._last_output_path = None
+        self.show_folder_btn.setVisible(False)
         self._set_status(f"\u2717 {message}", color="#f87171")
         QMessageBox.critical(self, "Conversion failed", message)
 
@@ -804,11 +915,29 @@ class MainWindow(QMainWindow):
             else "?"
         )
         self._reset_ui_after_conversion()
+        self._last_output_path = None
+        self.show_folder_btn.setVisible(False)
         self._set_status(
             f"\u26A0 Conversion cancelled after {elapsed_str}. "
             "Partial output discarded.",
             color="#fbbf24",
         )
+
+    # ---------- Show in Folder ----------
+    def _on_show_folder_clicked(self) -> None:
+        if self._last_output_path is not None:
+            _show_in_folder(self._last_output_path)
+
+    def _on_status_link_clicked(self, href: str) -> None:
+        """Handler for clicks on the rich-text link in the status label.
+
+        We only respond to our internal "show:" scheme. Other links
+        (e.g. real http URLs) are ignored, which is fine since we
+        never insert any.
+        """
+        if href.startswith("show:"):
+            path = Path(href[len("show:"):])
+            _show_in_folder(path)
 
     def _stop_timing(self) -> None:
         self._elapsed_timer.stop()
