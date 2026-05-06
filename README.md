@@ -31,11 +31,11 @@ see "PDF", and so on.
 
 ## Screenshots
 
-![File Converter — main window](docs/Screenshot-main.png)
+![File Converter — main window](docs/screenshot-main-v0.3.0.png)
 
-![Conversion in progress](docs/screenshot-converting-v0.2.0.png)
+![Conversion in progress](docs/screenshot-converting-v0.3.0.png)
 
-![Conversion completed](docs/screenshot-completed-v0.2.0.png)
+![Conversion completed](docs/screenshot-completed-v0.3.0.png)
 
 ## Install
 
