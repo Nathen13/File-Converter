@@ -34,6 +34,7 @@ see "PDF", and so on.
 <!-- TODO: add a screenshot of the app window here -->
 <!-- Drop an image into a `docs/` folder and reference it like:    -->
 <!-- ![App window](docs/screenshot.png)                            -->
+![File Converter app window](docs/screenshot.png)
 
 ## Install
 
